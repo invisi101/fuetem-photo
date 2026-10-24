@@ -19,6 +19,12 @@ and switches with it while running. Lights out is always black.
   are in natural order (`IMG_2` before `IMG_10`).
 - The thumbnail size changes with `Ctrl`+scroll or `+` / `−`. Columns always
   fill the window.
+- `D` shows details under each thumbnail: file name, date taken (the file's
+  date when there is no EXIF date), size in pixels, format and file size.
+  Folders show their name and how many pictures and folders they hold. It is
+  remembered between launches; hovering still shows the name without it.
+  The date and size come from the file headers, read alongside the thumbnail
+  and cached with it.
 - `S` (or the **Name ↑** button) changes the order: name, then name reversed,
   then date modified (oldest first), then newest first.
 

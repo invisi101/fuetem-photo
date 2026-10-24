@@ -8,6 +8,8 @@
 #include <QStringList>
 #include <QThreadPool>
 
+#include "metadata.h"
+
 // Makes and remembers grid thumbnails. Thumbnails are decoded on worker
 // threads, kept on disk under ~/.cache/fuetem-photo and in memory for the
 // current session. The grid hands over the paths it can see, nearest first;
@@ -24,6 +26,11 @@ public:
     // The thumbnail if it is in memory; null otherwise.
     const QImage *cached(const QString &path) const;
     bool failed(const QString &path) const { return m_failed.contains(path); }
+    // Date taken and size, once the thumbnail has been made or read.
+    const BasicInfo *info(const QString &path) const {
+        auto it = m_info.constFind(path);
+        return it == m_info.constEnd() ? nullptr : &it.value();
+    }
 
     // Replaces the waiting list with these paths, in priority order.
     void setQueue(const QStringList &paths);
@@ -33,19 +40,21 @@ public:
     // path, size and modification time, so edits make a fresh one).
     static QString cacheFileFor(const QString &path);
     // Disk cache or decode-and-store. Runs on worker threads.
-    static QImage loadOrCreate(const QString &path);
+    // Also fills info, from a small file kept beside the cached thumbnail.
+    static QImage loadOrCreate(const QString &path, BasicInfo *info = nullptr);
 
 signals:
     void ready(const QString &path);
 
 private:
     void pump();
-    void finished(const QString &path, const QImage &image);
+    void finished(const QString &path, const QImage &image, const BasicInfo &info);
 
     QCache<QString, QImage> m_memory;
     QStringList m_pending;
     QSet<QString> m_inFlight;
     QSet<QString> m_failed;
+    QHash<QString, BasicInfo> m_info;
     QThreadPool m_pool;
     int m_maxInFlight = 4;
 };

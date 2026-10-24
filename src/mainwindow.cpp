@@ -177,6 +177,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_model->setSort(sortKey == 1 ? FolderModel::Sort::Date : FolderModel::Sort::Name,
                      settings.value(QStringLiteral("sort/descending"), false).toBool());
     m_grid->setThumbSize(settings.value(QStringLiteral("grid/thumbSize"), 220).toInt());
+    m_grid->setDetails(settings.value(QStringLiteral("grid/details"), false).toBool());
     if (!restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray()))
         resize(1400, 900);
 
@@ -696,6 +697,7 @@ void MainWindow::toggleHelp() {
         {QStringLiteral("Scroll, pinch, + −"), QStringLiteral("Zoom the picture")},
         {QStringLiteral("Z or 1  /  0"), QStringLiteral("Actual size  /  fit to window")},
         {QStringLiteral("Ctrl+scroll, + −"), QStringLiteral("Thumbnail size (grid)")},
+        {QStringLiteral("D"), QStringLiteral("Details under thumbnails (grid)")},
         {QStringLiteral("L"), QStringLiteral("Lights: on, dimmed, out")},
         {QStringLiteral("F, F11"), QStringLiteral("Fullscreen")},
         {QStringLiteral("I"), QStringLiteral("Picture information")},
@@ -820,6 +822,12 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     if (key == Qt::Key_Plus || key == Qt::Key_Equal) { m_grid->setThumbSize(m_grid->thumbSize() + 40); return; }
     if (key == Qt::Key_Minus) { m_grid->setThumbSize(m_grid->thumbSize() - 40); return; }
     if (plain && key == Qt::Key_S) { cycleSort(); return; }
+    if (plain && key == Qt::Key_D) {
+        m_grid->setDetails(!m_grid->details());
+        QSettings().setValue(QStringLiteral("grid/details"), m_grid->details());
+        toast(m_grid->details() ? QStringLiteral("Details on") : QStringLiteral("Details off"));
+        return;
+    }
     if (plain && key >= Qt::Key_A && key <= Qt::Key_Z) {
         return; // swallow, rather than jumping by typed letters
     }

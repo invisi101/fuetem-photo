@@ -12,6 +12,7 @@
 #include "formats.h"
 #include "imageview.h"
 #include "mainwindow.h"
+#include "metadata.h"
 #include "photogrid.h"
 #include "theme.h"
 #include "thumbnails.h"
@@ -184,6 +185,11 @@ void TestFuetem::thumbnailRespectsExifOrientation() {
     QVERIFY(exiftool.waitForFinished(10000));
     const QImage thumb = Formats::loadThumbnail(path, 600);
     QCOMPARE(thumb.size(), QSize(450, 600)); // rotated to portrait
+    QCOMPARE(Metadata::basic(path).size, QSize(1200, 1600)); // upright, from the header
+    BasicInfo info;
+    QVERIFY(!ThumbnailLoader::loadOrCreate(path, &info).isNull());
+    QCOMPARE(info.size, QSize(1200, 1600));
+    QVERIFY(QFileInfo::exists(ThumbnailLoader::cacheFileFor(path) + QStringLiteral(".info")));
     const QImage full = Formats::loadFull(path);
     QCOMPARE(full.size(), QSize(1200, 1600));
     // The red corner of the stored image ends up top-right after a 90° turn.
@@ -242,14 +248,22 @@ void TestFuetem::windowNavigatesAndNeverDeletes() {
     QVERIFY(!window.inSingleView());
     QCOMPARE(window.grid()->currentIndex().row(), 1); // back where we were
 
-    // Lightroom keys: E opens the selected picture, G returns; D does nothing.
+    // Lightroom keys: E opens the selected picture, G returns.
     QTest::keyClick(window.grid(), Qt::Key_E);
     QVERIFY(window.inSingleView());
     QCOMPARE(window.currentRow(), 1);
     QTest::keyClick(window.imageView(), Qt::Key_G);
     QVERIFY(!window.inSingleView());
+    // D shows details under the thumbnails, and is remembered.
+    QVERIFY(!window.grid()->details());
+    const int plainHeight = window.grid()->gridSize().height();
     QTest::keyClick(window.grid(), Qt::Key_D);
     QVERIFY(!window.inSingleView());
+    QVERIFY(window.grid()->details());
+    QVERIFY(window.grid()->gridSize().height() > plainHeight);
+    QVERIFY(QSettings().value(QStringLiteral("grid/details")).toBool());
+    QTest::keyClick(window.grid(), Qt::Key_D);
+    QVERIFY(!window.grid()->details());
 
     // Letters typed into a text field stay there.
     auto *field = new QLineEdit(window.centralWidget());

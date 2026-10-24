@@ -3,7 +3,9 @@
 #include "foldermodel.h"
 #include "thumbnails.h"
 
+#include <QFileInfo>
 #include <QKeyEvent>
+#include <QLocale>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollBar>
@@ -31,6 +33,12 @@ void ThumbDelegate::setColors(const ThemeColors &colors, const QColor &backgroun
     m_dimmed = dimmed;
 }
 
+int ThumbDelegate::detailsHeight(const QFont &font) const {
+    QFont f = font;
+    f.setPixelSize(17);
+    return 3 * QFontMetrics(f).lineSpacing() + 14;
+}
+
 QSize ThumbDelegate::sizeHint(const QStyleOptionViewItem &, const QModelIndex &) const {
     return m_cell;
 }
@@ -44,7 +52,9 @@ void ThumbDelegate::paint(QPainter *p, const QStyleOptionViewItem &option,
     const bool hovered = option.state & QStyle::State_MouseOver;
 
     const QRect cell = option.rect;
-    const QRect box = cell.adjusted(Gap, Gap, -Gap, -Gap);
+    const int textHeight = m_details ? detailsHeight(option.font) : 0;
+    const QRect box = QRect(cell.left(), cell.top(), cell.width(), cell.height() - textHeight)
+                          .adjusted(Gap, Gap, -Gap, -Gap);
     const qreal dpr = p->device()->devicePixelRatioF();
 
     p->save();
@@ -82,6 +92,8 @@ void ThumbDelegate::paint(QPainter *p, const QStyleOptionViewItem &option,
         const QSize logical = (QSizeF(pix.size()) / dpr).toSize();
         imageRect = QRect(QPoint(0, 0), logical);
         imageRect.moveCenter(box.center());
+        if (m_details)
+            imageRect.moveBottom(box.bottom()); // sit right on top of its text
     } else {
         imageRect = isDir ? box : box.adjusted(box.width() / 8, box.height() / 8,
                                                 -box.width() / 8, -box.height() / 8);
@@ -105,7 +117,7 @@ void ThumbDelegate::paint(QPainter *p, const QStyleOptionViewItem &option,
         }
     }
 
-    if (isDir) {
+    if (isDir && !m_details) {
         // Darken the cover and write the folder name across it.
         QLinearGradient shade(imageRect.topLeft(), imageRect.bottomLeft());
         shade.setColorAt(0.0, QColor(0, 0, 0, pix.isNull() ? 0 : 40));
@@ -120,6 +132,55 @@ void ThumbDelegate::paint(QPainter *p, const QStyleOptionViewItem &option,
         const QString name = QFontMetrics(f).elidedText(index.data(Qt::DisplayRole).toString(),
                                                          Qt::ElideRight, text.width());
         p->drawText(text, Qt::AlignLeft | Qt::AlignBottom, name);
+    }
+
+    if (m_details) {
+        QFont f = option.font;
+        f.setPixelSize(17);
+        const QFontMetrics fm(f);
+        const QRect text(cell.left() + Gap + 2, box.bottom() + 8, cell.width() - 2 * Gap - 4,
+                         textHeight - 8);
+        const int line = fm.lineSpacing();
+        QStringList lines;
+        lines << index.data(Qt::DisplayRole).toString();
+        const QLocale locale(QLocale::English, QLocale::UnitedKingdom);
+        if (isDir) {
+            const int pics = index.data(FolderModel::PicturesRole).toInt();
+            const int subs = index.data(FolderModel::SubfoldersRole).toInt();
+            QStringList bits;
+            if (subs)
+                bits << QStringLiteral("%1 folder%2").arg(subs).arg(subs == 1 ? "" : "s");
+            if (pics || !subs)
+                bits << QStringLiteral("%1 picture%2").arg(pics).arg(pics == 1 ? "" : "s");
+            lines << bits.join(QStringLiteral(" · "));
+        } else {
+            const BasicInfo *info = m_loader->info(path);
+            QDateTime when;
+            if (info && !info->dateTaken.isEmpty())
+                when = QDateTime::fromString(info->dateTaken.left(19), QStringLiteral("yyyy:MM:dd HH:mm:ss"));
+            if (!when.isValid())
+                when = index.data(FolderModel::ModifiedRole).toDateTime();
+            lines << (info ? locale.toString(when, QStringLiteral("d MMM yyyy, HH:mm")) : QString());
+            QStringList bits;
+            if (info && info->size.isValid())
+                bits << QStringLiteral("%1 × %2").arg(info->size.width()).arg(info->size.height());
+            bits << QFileInfo(path).suffix().toUpper();
+            bits << locale.formattedDataSize(index.data(FolderModel::SizeRole).toLongLong(), 1,
+                                             QLocale::DataSizeTraditionalFormat);
+            lines << bits.join(QStringLiteral(" · "));
+        }
+        for (int i = 0; i < lines.size(); ++i) {
+            QColor c = m_colors.foreground;
+            c.setAlphaF((i == 0 ? 0.95 : 0.62) * (m_dimmed && !selected ? 0.5 : 1.0));
+            QFont lf = f;
+            if (i == 0)
+                lf.setWeight(isDir ? QFont::DemiBold : QFont::Medium);
+            p->setFont(lf);
+            p->setPen(i == 0 && selected ? m_colors.accent : c);
+            const QRect r(text.left(), text.top() + i * line, text.width(), line);
+            p->drawText(r, Qt::AlignLeft | Qt::AlignVCenter,
+                        QFontMetrics(lf).elidedText(lines.at(i), Qt::ElideMiddle, r.width()));
+        }
     }
 
     if (m_dimmed && !selected) {
@@ -210,6 +271,18 @@ void PhotoGrid::setThumbSize(int size) {
     emit thumbSizeChanged(size);
 }
 
+void PhotoGrid::setDetails(bool on) {
+    if (on == m_delegate->details())
+        return;
+    const QModelIndex keep = currentIndex();
+    m_delegate->setDetails(on);
+    relayout();
+    if (keep.isValid())
+        scrollTo(keep, QAbstractItemView::EnsureVisible);
+    scheduleRequests();
+    viewport()->update();
+}
+
 void PhotoGrid::selectRow(int row) {
     if (row < 0 || row >= m_model->rowCount())
         return;
@@ -229,8 +302,9 @@ void PhotoGrid::relayout() {
     const int width = layoutWidth();
     const int columns = qMax(1, width / m_target);
     m_cell = qMax(MinSize / 2, width / columns);
-    m_delegate->setCell(QSize(m_cell, m_cell));
-    setGridSize(QSize(m_cell, m_cell));
+    m_cellHeight = m_cell + (m_delegate->details() ? m_delegate->detailsHeight(font()) : 0);
+    m_delegate->setCell(QSize(m_cell, m_cellHeight));
+    setGridSize(QSize(m_cell, m_cellHeight));
     verticalScrollBar()->setSingleStep(qMax(20, m_cell / 6));
     doItemsLayout();
 }
@@ -279,8 +353,8 @@ void PhotoGrid::requestVisible() {
     }
     const int columns = qMax(1, layoutWidth() / m_cell);
     const int top = verticalScrollBar()->value();
-    const int firstRow = top / m_cell;
-    const int visibleRows = viewport()->height() / m_cell + 2;
+    const int firstRow = top / m_cellHeight;
+    const int visibleRows = viewport()->height() / m_cellHeight + 2;
     const int first = qBound(0, firstRow * columns, count - 1);
     const int last = qBound(0, (firstRow + visibleRows) * columns - 1, count - 1);
     const int page = last - first + 1;

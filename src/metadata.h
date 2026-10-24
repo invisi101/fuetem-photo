@@ -10,7 +10,16 @@ struct PhotoInfo {
     QString exposure;   // "1/125 s · f/2.8 · ISO 200 · 50 mm"
 };
 
+// The little the grid shows under a thumbnail.
+struct BasicInfo {
+    QString dateTaken; // EXIF, as written by the camera; empty when absent
+    QSize size;        // upright pixel size; invalid when unknown
+};
+
 namespace Metadata {
+// Date taken and upright dimensions, read from the file's headers only.
+BasicInfo basic(const QString &path);
+
 // Reads EXIF with exiv2. Never writes. Empty fields when unavailable.
 PhotoInfo read(const QString &path);
 

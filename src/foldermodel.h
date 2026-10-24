@@ -13,6 +13,8 @@ struct FolderEntry {
     QString cover;      // for folders: the first picture inside, if any
     QDateTime modified;
     qint64 size = 0;
+    int pictures = 0;   // for folders: pictures directly inside
+    int subfolders = 0; // for folders: folders directly inside
 };
 
 // One folder's contents: its subfolders first, then its pictures. Listing
@@ -20,7 +22,8 @@ struct FolderEntry {
 class FolderModel : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Roles { PathRole = Qt::UserRole + 1, IsDirRole, CoverRole };
+    enum Roles { PathRole = Qt::UserRole + 1, IsDirRole, CoverRole, ModifiedRole, SizeRole,
+                 PicturesRole, SubfoldersRole };
     enum class Sort { Name, Date };
 
     explicit FolderModel(QObject *parent = nullptr);

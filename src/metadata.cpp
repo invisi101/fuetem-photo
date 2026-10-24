@@ -5,7 +5,14 @@
 #include <QLocale>
 #include <QStringList>
 
+#include <QImageReader>
+
 #include <exiv2/exiv2.hpp>
+#include <libraw/libraw.h>
+
+#include <memory>
+
+#include "formats.h"
 
 namespace {
 
@@ -24,6 +31,50 @@ QString value(const Exiv2::ExifData &exif, const char *key, bool pretty = false)
 } // namespace
 
 namespace Metadata {
+
+BasicInfo basic(const QString &path) {
+    BasicInfo info;
+    int orientation = 1;
+    try {
+        auto image = Exiv2::ImageFactory::open(QFile::encodeName(path).toStdString());
+        if (image) {
+            image->readMetadata();
+            const Exiv2::ExifData &exif = image->exifData();
+            info.dateTaken = value(exif, "Exif.Photo.DateTimeOriginal");
+            if (info.dateTaken.isEmpty())
+                info.dateTaken = value(exif, "Exif.Image.DateTime");
+            orientation = value(exif, "Exif.Image.Orientation").toInt();
+            if (!Formats::isRawFile(path) && image->pixelWidth() > 0 && image->pixelHeight() > 0)
+                info.size = QSize(int(image->pixelWidth()), int(image->pixelHeight()));
+        }
+    } catch (...) {
+    }
+
+    if (Formats::isRawFile(path)) {
+        auto raw = std::make_unique<LibRaw>();
+        if (raw->open_file(QFile::encodeName(path).constData()) == LIBRAW_SUCCESS) {
+            QSize s(raw->imgdata.sizes.width, raw->imgdata.sizes.height);
+            const int flip = raw->imgdata.sizes.flip;
+            if (flip == 5 || flip == 6)
+                s.transpose();
+            info.size = s;
+        }
+        return info;
+    }
+
+    if (!info.size.isValid()) {
+        // Qt reports the size before any rotation; turn it upright.
+        QImageReader reader(path);
+        reader.setDecideFormatFromContent(true);
+        info.size = reader.size();
+        if (info.size.isValid() && orientation >= 5 && orientation <= 8)
+            info.size.transpose();
+        return info;
+    }
+    if (orientation >= 5 && orientation <= 8)
+        info.size.transpose();
+    return info;
+}
 
 PhotoInfo read(const QString &path) {
     PhotoInfo info;

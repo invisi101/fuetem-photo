@@ -19,6 +19,10 @@ public:
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 
     void setCell(QSize cell) { m_cell = cell; m_scaled.clear(); }
+    void setDetails(bool on) { m_details = on; }
+    bool details() const { return m_details; }
+    // Height of the text under each thumbnail when details are on.
+    int detailsHeight(const QFont &font) const;
     void setColors(const ThemeColors &colors, const QColor &background, bool dimmed);
     void forget(const QString &path) { m_scaled.remove(path); }
 
@@ -28,6 +32,7 @@ private:
     ThemeColors m_colors;
     QColor m_background;
     bool m_dimmed = false;
+    bool m_details = false;
     mutable QCache<QString, QPixmap> m_scaled;
 };
 
@@ -39,6 +44,8 @@ public:
     PhotoGrid(FolderModel *model, ThumbnailLoader *loader, QWidget *parent = nullptr);
 
     int thumbSize() const { return m_target; }
+    bool details() const { return m_delegate->details(); }
+    void setDetails(bool on);
     void setThumbSize(int size);
     void setColors(const ThemeColors &colors, const QColor &background, bool dimmed);
     void selectRow(int row);
@@ -68,6 +75,7 @@ private:
     ThumbDelegate *m_delegate;
     int m_target = 220;
     int m_cell = 220;
+    int m_cellHeight = 220;
     QTimer m_requestTimer;
     QTimer m_repaintTimer;
 };

@@ -41,8 +41,35 @@ QString ThumbnailLoader::cacheFileFor(const QString &path) {
     return cacheRoot() + QLatin1Char('/') + hash.left(2) + QLatin1Char('/') + hash.mid(2);
 }
 
-QImage ThumbnailLoader::loadOrCreate(const QString &path) {
+namespace {
+BasicInfo loadOrCreateInfo(const QString &path, const QString &cacheFile) {
+    const QString infoFile = cacheFile + QStringLiteral(".info");
+    QFile in(infoFile);
+    if (in.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QStringList lines = QString::fromUtf8(in.readAll()).split(QLatin1Char('\n'));
+        if (lines.size() >= 3) {
+            BasicInfo info;
+            info.dateTaken = lines.at(0);
+            info.size = QSize(lines.at(1).toInt(), lines.at(2).toInt());
+            return info;
+        }
+    }
+    const BasicInfo info = Metadata::basic(path);
+    QDir().mkpath(QFileInfo(infoFile).absolutePath());
+    QSaveFile out(infoFile);
+    if (out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        out.write(QStringLiteral("%1\n%2\n%3\n").arg(info.dateTaken)
+                      .arg(info.size.width()).arg(info.size.height()).toUtf8());
+        out.commit();
+    }
+    return info;
+}
+}
+
+QImage ThumbnailLoader::loadOrCreate(const QString &path, BasicInfo *info) {
     const QString cacheFile = cacheFileFor(path);
+    if (info)
+        *info = loadOrCreateInfo(path, cacheFile);
     if (QFileInfo::exists(cacheFile)) {
         QImageReader reader(cacheFile);
         reader.setDecideFormatFromContent(true);
@@ -93,19 +120,21 @@ void ThumbnailLoader::pump() {
         m_inFlight.insert(path);
         QPointer<ThumbnailLoader> self(this);
         m_pool.start([self, path]() {
-            const QImage image = ThumbnailLoader::loadOrCreate(path);
+            BasicInfo info;
+            const QImage image = ThumbnailLoader::loadOrCreate(path, &info);
             if (!self)
                 return;
-            QMetaObject::invokeMethod(self.data(), [self, path, image]() {
+            QMetaObject::invokeMethod(self.data(), [self, path, image, info]() {
                 if (self)
-                    self->finished(path, image);
+                    self->finished(path, image, info);
             }, Qt::QueuedConnection);
         });
     }
 }
 
-void ThumbnailLoader::finished(const QString &path, const QImage &image) {
+void ThumbnailLoader::finished(const QString &path, const QImage &image, const BasicInfo &info) {
     m_inFlight.remove(path);
+    m_info.insert(path, info);
     if (image.isNull()) {
         m_failed.insert(path);
     } else {

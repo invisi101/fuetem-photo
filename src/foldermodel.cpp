@@ -55,6 +55,10 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case PathRole: return e.path;
     case IsDirRole: return e.isDir;
     case CoverRole: return e.cover;
+    case ModifiedRole: return e.modified;
+    case SizeRole: return e.size;
+    case PicturesRole: return e.pictures;
+    case SubfoldersRole: return e.subfolders;
     default: return {};
     }
 }
@@ -123,8 +127,13 @@ QVector<FolderEntry> FolderModel::list(const QString &folder) {
             continue;
         e.modified = info.lastModified();
         e.size = info.size();
-        if (e.isDir)
+        if (e.isDir) {
             e.cover = findCover(e.path, 2);
+            const QDir sub(e.path);
+            for (const QString &f : sub.entryList(QDir::Files | QDir::Readable, QDir::NoSort))
+                e.pictures += Formats::isImageFile(f) ? 1 : 0;
+            e.subfolders = int(sub.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::NoSort).size());
+        }
         out.append(e);
     }
     return out;
