@@ -26,7 +26,8 @@ and switches with it while running. Lights out is always black.
   The date and size come from the file headers, read alongside the thumbnail
   and cached with it.
 - `S` (or the **Name ↑** button) changes the order: name, then name reversed,
-  then date modified (oldest first), then newest first.
+  then date taken (oldest first), then newest first. Pictures without an
+  EXIF date fall back to the file's date.
 
 ## One picture
 

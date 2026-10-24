@@ -13,6 +13,8 @@
 
 #include "mainwindow.h"
 
+#include <exiv2/exiv2.hpp>
+
 namespace {
 // FUETEM_PHOTO_SCRIPT drives the window for testing without touching the
 // rest of the desktop: "wait:1500;key:Return;shot:/tmp/a.png;key:Right;quit".
@@ -46,6 +48,8 @@ void runScript(MainWindow *window, QStringList steps) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+    // Odd maker notes make exiv2 print warnings by the hundred; they are harmless.
+    Exiv2::LogMsg::setLevel(Exiv2::LogMsg::mute);
     // Open-folder windows come from the desktop portal, as in Fuetem Writer:
     // the GTK chooser running inside the app is the thing that crashed there.
     if (!qEnvironmentVariableIsSet("FUETEM_KEEP_PLATFORMTHEME"))

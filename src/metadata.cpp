@@ -76,6 +76,23 @@ BasicInfo basic(const QString &path) {
     return info;
 }
 
+QDateTime dateTaken(const QString &path) {
+    QString text;
+    try {
+        auto image = Exiv2::ImageFactory::open(QFile::encodeName(path).toStdString());
+        if (!image)
+            return {};
+        image->readMetadata();
+        const Exiv2::ExifData &exif = image->exifData();
+        text = value(exif, "Exif.Photo.DateTimeOriginal");
+        if (text.isEmpty())
+            text = value(exif, "Exif.Image.DateTime");
+    } catch (...) {
+        return {};
+    }
+    return QDateTime::fromString(text.left(19), QStringLiteral("yyyy:MM:dd HH:mm:ss"));
+}
+
 PhotoInfo read(const QString &path) {
     PhotoInfo info;
     try {

@@ -647,7 +647,7 @@ void MainWindow::cycleSort() {
         m_grid->selectRow(row);
     updateStatus();
     toast(QStringLiteral("Sorted by %1, %2")
-              .arg(sort == FolderModel::Sort::Name ? QStringLiteral("name") : QStringLiteral("date modified"),
+              .arg(sort == FolderModel::Sort::Name ? QStringLiteral("name") : QStringLiteral("date taken"),
                    nextDesc ? (sort == FolderModel::Sort::Name ? QStringLiteral("Z to A") : QStringLiteral("newest first"))
                             : (sort == FolderModel::Sort::Name ? QStringLiteral("A to Z") : QStringLiteral("oldest first"))));
 }

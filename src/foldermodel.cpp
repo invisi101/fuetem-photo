@@ -1,11 +1,13 @@
 #include "foldermodel.h"
 
 #include "formats.h"
+#include "metadata.h"
 
 #include <QCollator>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <QtConcurrent/QtConcurrentMap>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
@@ -35,6 +37,10 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
             return;
         beginResetModel();
         m_entries = m_watcher.result();
+        if (m_sort == Sort::Date && !m_hasDates) { // switched to date while listing
+            readDates(m_entries);
+            m_hasDates = true;
+        }
         applySort();
         endResetModel();
         emit loaded();
@@ -113,7 +119,16 @@ QString FolderModel::findCover(const QString &folder, int depth) {
     return {};
 }
 
-QVector<FolderEntry> FolderModel::list(const QString &folder) {
+// Headers only, several at a time; about a second for two thousand photos,
+// so it only happens while sorting by date.
+void FolderModel::readDates(QVector<FolderEntry> &entries) {
+    QtConcurrent::blockingMap(entries, [](FolderEntry &e) {
+        if (!e.isDir && !e.taken.isValid())
+            e.taken = Metadata::dateTaken(e.path);
+    });
+}
+
+QVector<FolderEntry> FolderModel::list(const QString &folder, bool withDates) {
     QVector<FolderEntry> out;
     QDirIterator it(folder, QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot | QDir::Readable);
     while (it.hasNext()) {
@@ -136,6 +151,8 @@ QVector<FolderEntry> FolderModel::list(const QString &folder) {
         }
         out.append(e);
     }
+    if (withDates)
+        readDates(out);
     return out;
 }
 
@@ -149,7 +166,9 @@ void FolderModel::setFolder(const QString &path) {
     endResetModel();
     m_watcher.setProperty("generation", m_generation);
     const QString folder = m_folder;
-    m_watcher.setFuture(QtConcurrent::run([folder]() { return FolderModel::list(folder); }));
+    const bool withDates = m_sort == Sort::Date;
+    m_hasDates = withDates;
+    m_watcher.setFuture(QtConcurrent::run([folder, withDates]() { return FolderModel::list(folder, withDates); }));
 }
 
 void FolderModel::setSort(Sort sort, bool descending) {
@@ -158,6 +177,10 @@ void FolderModel::setSort(Sort sort, bool descending) {
     m_sort = sort;
     m_descending = descending;
     beginResetModel();
+    if (sort == Sort::Date && !m_hasDates && !loading()) {
+        readDates(m_entries);
+        m_hasDates = true;
+    }
     applySort();
     endResetModel();
 }
@@ -171,8 +194,11 @@ void FolderModel::applySort() {
             return a.isDir; // folders first, always
         if (a.isDir)
             return desc ? lessByName(b.name, a.name) : lessByName(a.name, b.name);
-        if (sort == Sort::Date && a.modified != b.modified)
-            return desc ? b.modified < a.modified : a.modified < b.modified;
+        if (sort == Sort::Date) {
+            const QDateTime da = sortDate(a), db = sortDate(b);
+            if (da != db)
+                return desc ? db < da : da < db;
+        }
         return desc ? lessByName(b.name, a.name) : lessByName(a.name, b.name);
     });
     m_rowOfPath.clear();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDateTime>
 #include <QSize>
 #include <QString>
 
@@ -19,6 +20,9 @@ struct BasicInfo {
 namespace Metadata {
 // Date taken and upright dimensions, read from the file's headers only.
 BasicInfo basic(const QString &path);
+
+// When the picture was taken, from EXIF; invalid when the file has no date.
+QDateTime dateTaken(const QString &path);
 
 // Reads EXIF with exiv2. Never writes. Empty fields when unavailable.
 PhotoInfo read(const QString &path);

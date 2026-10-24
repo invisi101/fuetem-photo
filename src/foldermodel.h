@@ -12,6 +12,7 @@ struct FolderEntry {
     bool isDir = false;
     QString cover;      // for folders: the first picture inside, if any
     QDateTime modified;
+    QDateTime taken;    // for pictures: EXIF date taken, invalid when absent
     qint64 size = 0;
     int pictures = 0;   // for folders: pictures directly inside
     int subfolders = 0; // for folders: folders directly inside
@@ -48,10 +49,13 @@ public:
     int neighbourImage(int row, int step) const;
 
     // Public so the tests can check them.
-    static QVector<FolderEntry> list(const QString &folder);
+    static QVector<FolderEntry> list(const QString &folder, bool withDates = false);
+    static void readDates(QVector<FolderEntry> &entries);
     static bool lessByName(const QString &a, const QString &b);
     static int monthNumber(const QString &name);
     static QString findCover(const QString &folder, int depth);
+    // Date taken, or the file's date when the picture has none.
+    static QDateTime sortDate(const FolderEntry &e) { return e.taken.isValid() ? e.taken : e.modified; }
 
 signals:
     void loaded();
@@ -65,6 +69,7 @@ private:
     int m_imageCount = 0;
     Sort m_sort = Sort::Name;
     bool m_descending = false;
+    bool m_hasDates = false;
     QFutureWatcher<QVector<FolderEntry>> m_watcher;
     int m_generation = 0;
 };

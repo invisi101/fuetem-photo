@@ -8,6 +8,8 @@
 #include <QProcess>
 #include <QTemporaryDir>
 
+#include <exiv2/exiv2.hpp>
+
 #include "foldermodel.h"
 #include "formats.h"
 #include "imageview.h"
@@ -40,6 +42,7 @@ private slots:
     void initTestCase();
     void recognisesPictures();
     void sortsNamesNaturallyAndMonthsByCalendar();
+    void sortsByDateTakenBeforeFileDate();
     void parsesOmarchyColors();
     void followsOmarchyThemeSwitch();
     void listsFoldersFirstAndSkipsOtherFiles();
@@ -150,6 +153,48 @@ void TestFuetem::listsFoldersFirstAndSkipsOtherFiles() {
     model.setSort(FolderModel::Sort::Name, true);
     QVERIFY(model.entry(0).isDir);
     QCOMPARE(model.entry(1).name, QStringLiteral("b.png"));
+}
+
+void TestFuetem::sortsByDateTakenBeforeFileDate() {
+    QTemporaryDir dir;
+    // Written newest-first, so the file dates disagree with the EXIF dates.
+    const auto save = [&](const char *name, const char *taken) {
+        const QString path = dir.filePath(QString::fromLatin1(name));
+        QVERIFY(testImage(40, 30).save(path, "JPEG"));
+        if (taken) {
+            auto image = Exiv2::ImageFactory::open(QFile::encodeName(path).toStdString());
+            image->readMetadata();
+            image->exifData()["Exif.Photo.DateTimeOriginal"] = std::string(taken);
+            image->writeMetadata();
+        }
+    };
+    save("a.jpg", "2020:06:01 12:00:00");
+    QTest::qWait(1100);
+    save("b.jpg", "2010:01:01 08:00:00");
+    QTest::qWait(1100);
+    save("c.jpg", nullptr); // no EXIF date: its file date, today, comes last
+
+    QCOMPARE(Metadata::dateTaken(dir.filePath(QStringLiteral("b.jpg"))),
+             QDateTime(QDate(2010, 1, 1), QTime(8, 0)));
+
+    FolderModel model;
+    model.setSort(FolderModel::Sort::Date, false);
+    QSignalSpy spy(&model, &FolderModel::loaded);
+    model.setFolder(dir.path());
+    QVERIFY(spy.wait(5000));
+    QCOMPARE(model.entry(0).name, QStringLiteral("b.jpg"));
+    QCOMPARE(model.entry(1).name, QStringLiteral("a.jpg"));
+    QCOMPARE(model.entry(2).name, QStringLiteral("c.jpg"));
+
+    // Listed by name first, then switched to date: the dates are read then.
+    FolderModel byName;
+    QSignalSpy spy2(&byName, &FolderModel::loaded);
+    byName.setFolder(dir.path());
+    QVERIFY(spy2.wait(5000));
+    QCOMPARE(byName.entry(0).name, QStringLiteral("a.jpg"));
+    byName.setSort(FolderModel::Sort::Date, true);
+    QCOMPARE(byName.entry(0).name, QStringLiteral("c.jpg"));
+    QCOMPARE(byName.entry(2).name, QStringLiteral("b.jpg"));
 }
 
 void TestFuetem::thumbnailIsSmallAndCachedWithoutTouchingTheOriginal() {
